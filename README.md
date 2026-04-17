@@ -14,25 +14,25 @@ A computer-side network packet capture tool with anti-crawler features, allowing
 ## Requirements
 
 - Python 3.7+
-- Wireshark (for tshark)
 - Python packages:
   - psutil
   - pandas
   - requests
-  - pyshark
+  - scapy
 
 ## Installation
 
-1. Install Wireshark from [https://www.wireshark.org/download.html](https://www.wireshark.org/download.html)
-2. Clone this repository:
+1. Clone this repository:
    ```bash
    git clone https://github.com/l1208684152/network-capture-tool.git
    cd network-capture-tool
    ```
-3. Run the tool:
+2. Run the tool:
    ```bash
    python network_capture_tool/main.py
    ```
+
+**Note**: The tool will automatically install required Python packages if they are not already installed.
 
 ## Usage
 
