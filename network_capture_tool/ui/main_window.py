@@ -454,11 +454,14 @@ class NetworkCaptureTool:
         try:
             # 批量插入数据包
             for item in self.packet_batch:
-                self.result_tree.insert('', tk.END, values=(
+                # 插入数据包并获取item ID
+                item_id = self.result_tree.insert('', tk.END, values=(
                     item['no'], item['time'], item['src'], item['dst'], 
                     item['proto'], item['src_port'], item['dst_port'], 
                     item['length'], item['info']
-                ), tags=(item,))
+                ))
+                # 将数据包存储在字典中，使用item ID作为键
+                self.packet_dict[item_id] = item
             
             # 更新数据包计数
             self.packet_count_var.set(f"数据包：{len(self.captured_packets)}")
@@ -604,6 +607,7 @@ headers = {
         for item in self.result_tree.get_children():
             self.result_tree.delete(item)
         self.captured_packets = []
+        self.packet_dict = {}  # 清空数据包字典
         self.packet_count_var.set("数据包：0")
         self.raw_detail_text.delete(1.0, tk.END)
         self.anti_crawler_text.delete(1.0, tk.END)
@@ -887,10 +891,9 @@ headers = {
         # 选中该项目
         self.result_tree.selection_set(item)
         
-        # 获取数据包信息
-        tags = self.result_tree.item(item, 'tags')
-        if tags and len(tags) > 0:
-            packet = tags[0]
+        # 从packet_dict中获取数据包
+        packet = self.packet_dict.get(item)
+        if packet:
             # 创建数据包详情弹窗
             PacketDetailWindow(self.root, packet)
     
