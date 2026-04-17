@@ -156,6 +156,8 @@ class CaptureEngine:
                     nonlocal process_ports
                     
                     current_time = time.time()
+                    connections = []
+                    
                     # 定期更新进程连接信息
                     if current_time - last_update_time >= update_interval:
                         last_update_time = current_time
@@ -165,7 +167,6 @@ class CaptureEngine:
                             
                             # 过滤出属于目标进程的连接，以及具有相同名称的其他进程的连接
                             # 这样可以捕获浏览器等多进程应用的所有连接
-                            connections = []
                             for conn in all_connections:
                                 if conn.pid == pid:
                                     connections.append(conn)
@@ -186,11 +187,12 @@ class CaptureEngine:
                                     process_ports.add(conn.raddr.port)
                             
                             logger.debug(f"更新进程 {pid} 及其同名进程的连接: {len(connections)} 个连接, 端口: {process_ports}")
-                            return connections
                         except Exception as e:
                             logger.error(f"获取进程连接失败: {e}")
-                            return []
-                    return []
+                    
+                    # 即使没有更新连接，也返回当前的connections列表
+                    # 这样在处理数据包时，仍然可以使用process_ports来匹配
+                    return connections
                 
                 # 构建数据包处理函数
                 packet_no = [0]  # 使用列表来实现可变变量

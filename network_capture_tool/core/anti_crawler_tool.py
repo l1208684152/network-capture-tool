@@ -1,5 +1,6 @@
 import random
 import logging
+import requests
 
 class AntiCrawlerTool:
     """反爬虫工具类"""
@@ -24,23 +25,43 @@ class AntiCrawlerTool:
     def generate_random_ua(self):
         """生成随机User-Agent"""
         browsers = ['Chrome', 'Firefox', 'Edge', 'Safari']
-        os_list = ['Windows NT 10.0', 'Macintosh; Intel Mac OS X 14_2', 'X11; Linux x86_64']
+        
+        # 操作系统和对应的系统字符串
+        os_list = [
+            ('Windows', 'Windows NT 10.0; Win64; x64'),
+            ('macOS', 'Macintosh; Intel Mac OS X 14_2'),
+            ('Linux', 'X11; Linux x86_64')
+        ]
         
         browser = random.choice(browsers)
-        os = random.choice(os_list)
+        os_name, os_string = random.choice(os_list)
         
         if browser == 'Chrome':
             version = f'{random.randint(110, 120)}.0.0.0'
-            ua = f'Mozilla/5.0 ({os}; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{version} Safari/537.36'
+            ua = f'Mozilla/5.0 ({os_string}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{version} Safari/537.36'
         elif browser == 'Firefox':
             version = f'{random.randint(115, 120)}.0'
-            ua = f'Mozilla/5.0 ({os}; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/{version}'
+            # Firefox的UA格式略有不同
+            if os_name == 'Windows':
+                ua = f'Mozilla/5.0 ({os_string}; rv:{version}) Gecko/{version} Firefox/{version}'
+            elif os_name == 'macOS':
+                ua = f'Mozilla/5.0 ({os_string}) AppleWebKit/605.1.15 (KHTML, like Gecko) Firefox/{version}'
+            else:  # Linux
+                ua = f'Mozilla/5.0 ({os_string}; rv:{version}) Gecko/{version} Firefox/{version}'
         elif browser == 'Edge':
             version = f'{random.randint(110, 120)}.0.0.0'
-            ua = f'Mozilla/5.0 ({os}; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/{version}'
+            ua = f'Mozilla/5.0 ({os_string}) AppleWebKit/537.36 (KHTML, like Gecko) Edge/{version}'
         else:  # Safari
             version = f'{random.randint(16, 17)}.{random.randint(0, 2)}'
-            ua = f'Mozilla/5.0 ({os}) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/{version} Safari/605.1.15'
+            # Safari主要用于macOS和iOS
+            if os_name == 'macOS':
+                ua = f'Mozilla/5.0 ({os_string}) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/{version} Safari/605.1.15'
+            elif os_name == 'Windows':
+                # Windows上的Safari
+                ua = f'Mozilla/5.0 ({os_string}) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/{version} Safari/605.1.15'
+            else:  # Linux
+                # Linux上的Safari
+                ua = f'Mozilla/5.0 ({os_string}) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/{version} Safari/605.1.15'
         
         return ua
     
@@ -98,10 +119,9 @@ class AntiCrawlerTool:
     
     def test_proxy(self, proxy):
         """测试代理是否可用"""
-        import requests
-        
         try:
-            response = requests.get('http://www.baidu.com', proxies={'http': proxy, 'https': proxy}, timeout=5)
+            # 使用HTTPS地址测试代理，这样可以测试HTTPS代理是否可用
+            response = requests.get('https://www.baidu.com', proxies={'http': proxy, 'https': proxy}, timeout=5)
             if response.status_code == 200:
                 return True, f"代理 {proxy} 可用！"
             else:
@@ -126,35 +146,45 @@ class AntiCrawlerTool:
         analysis.append(f"协议: {packet.transport_layer if hasattr(packet, 'transport_layer') else 'Unknown'}")
         
         # 检查HTTP请求
-        if hasattr(packet, 'http'):
+        if packet.haslayer('HTTPRequest'):
             analysis.append("\n--- HTTP请求分析 ---")
+            http_layer = packet['HTTPRequest']
             
             # 检查请求方法
-            if hasattr(packet.http, 'request_method'):
-                analysis.append(f"请求方法: {packet.http.request_method}")
+            if hasattr(http_layer, 'Method'):
+                analysis.append(f"请求方法: {http_layer.Method.decode('utf-8', errors='ignore')}")
+            
+            # 检查请求路径
+            if hasattr(http_layer, 'Path'):
+                analysis.append(f"请求路径: {http_layer.Path.decode('utf-8', errors='ignore')}")
             
             # 检查请求头
             for header in anti_crawler_headers:
-                header_lower = header.lower().replace('-', '_')
-                if hasattr(packet.http, f'request_{header_lower}'):
-                    header_value = getattr(packet.http, f'request_{header_lower}')
+                if hasattr(http_layer, header):
+                    header_value = getattr(http_layer, header)
+                    if isinstance(header_value, bytes):
+                        header_value = header_value.decode('utf-8', errors='ignore')
                     analysis.append(f"{header}: {header_value}")
             
             # 检查Cookie
-            if hasattr(packet.http, 'request_cookie'):
-                cookies = packet.http.request_cookie
+            if hasattr(http_layer, 'Cookie'):
+                cookies = http_layer.Cookie
+                if isinstance(cookies, bytes):
+                    cookies = cookies.decode('utf-8', errors='ignore')
                 cookie_count = len(cookies.split(';')) if cookies else 0
                 analysis.append(f"Cookie数量: {cookie_count}")
             
             # 检查是否有Referer
-            if hasattr(packet.http, 'request_referer'):
+            if hasattr(http_layer, 'Referer'):
                 analysis.append("包含Referer头")
             else:
                 analysis.append("警告：缺少Referer头，可能被识别为爬虫")
             
             # 检查User-Agent
-            if hasattr(packet.http, 'request_user_agent'):
-                ua = packet.http.request_user_agent
+            if hasattr(http_layer, 'User_Agent'):
+                ua = http_layer.User_Agent
+                if isinstance(ua, bytes):
+                    ua = ua.decode('utf-8', errors='ignore')
                 if 'bot' in ua.lower() or 'spider' in ua.lower():
                     analysis.append("警告：User-Agent包含爬虫特征")
                 else:
@@ -162,16 +192,21 @@ class AntiCrawlerTool:
             else:
                 analysis.append("警告：缺少User-Agent头，可能被识别为爬虫")
         
-        # 检查响应状态码
-        if hasattr(packet.http, 'response_code'):
-            status_code = packet.http.response_code
-            analysis.append(f"\n响应状态码: {status_code}")
-            if status_code == 403:
-                analysis.append("警告：收到403 Forbidden，可能被反爬虫机制拦截")
-            elif status_code == 429:
-                analysis.append("警告：收到429 Too Many Requests，请求频率过高")
-            elif status_code == 503:
-                analysis.append("警告：收到503 Service Unavailable，可能被限流")
+        # 检查HTTP响应
+        if packet.haslayer('HTTPResponse'):
+            http_layer = packet['HTTPResponse']
+            # 检查响应状态码
+            if hasattr(http_layer, 'Status_Code'):
+                status_code = http_layer.Status_Code
+                if isinstance(status_code, bytes):
+                    status_code = status_code.decode('utf-8', errors='ignore')
+                analysis.append(f"\n响应状态码: {status_code}")
+                if status_code == '403':
+                    analysis.append("警告：收到403 Forbidden，可能被反爬虫机制拦截")
+                elif status_code == '429':
+                    analysis.append("警告：收到429 Too Many Requests，请求频率过高")
+                elif status_code == '503':
+                    analysis.append("警告：收到503 Service Unavailable，可能被限流")
         
         # 检查是否有JavaScript挑战
         if 'javascript' in packet_str.lower() or 'challenge' in packet_str.lower():
