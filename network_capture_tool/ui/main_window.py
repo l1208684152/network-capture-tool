@@ -44,6 +44,9 @@ class NetworkCaptureTool:
         self.packet_batch = []  # 批量更新的数据包
         self.ui_update_pending = False  # UI更新标志
         
+        # 数据包存储字典，用于通过item ID快速查找数据包
+        self.packet_dict = {}
+        
         # 初始化组件
         self.dependency_manager = DependencyManager()
         self.capture_engine = CaptureEngine(self.queue)
@@ -750,9 +753,9 @@ headers = {
             return
         
         selected_item = selected_items[0]
-        tags = self.result_tree.item(selected_item, 'tags')
-        if tags and len(tags) > 0:
-            packet = tags[0]
+        # 从packet_dict中获取数据包
+        packet = self.packet_dict.get(selected_item)
+        if packet:
             
             # 显示原始数据
             self.raw_detail_text.delete(1.0, tk.END)
