@@ -172,6 +172,10 @@ class NetworkCaptureTool:
         self.mitm_enabled = tk.BooleanVar(value=False)
         ttk.Checkbutton(mitm_container, text="启用HTTPS解密", variable=self.mitm_enabled).pack(side=tk.LEFT, padx=10)
         
+        # 自动配置代理
+        self.auto_proxy = tk.BooleanVar(value=True)
+        ttk.Checkbutton(mitm_container, text="自动配置代理", variable=self.auto_proxy).pack(side=tk.LEFT, padx=10)
+        
         # 代理端口
         ttk.Label(mitm_container, text="代理端口：").pack(side=tk.LEFT, padx=10)
         self.mitm_port = tk.StringVar(value="8888")
@@ -937,14 +941,32 @@ headers = {
             self.mitm_proxy = MITMProxy(port=port)
             self.mitm_proxy.start()
             
+            # 自动配置代理
+            if self.auto_proxy.get():
+                proxy_set = self.mitm_proxy.set_system_proxy(enable=True)
+                if proxy_set:
+                    self.status_var.set(f"MITM代理已启动: https://127.0.0.1:{port} (自动配置代理成功)")
+                else:
+                    self.status_var.set(f"MITM代理已启动: https://127.0.0.1:{port} (自动配置代理失败，请手动设置)")
+            else:
+                self.status_var.set(f"MITM代理已启动: https://127.0.0.1:{port}")
+            
+            # 自动安装证书
+            cert_installed = self.mitm_proxy.install_certificate()
+            
+            # 显示提示
+            ca_cert_path = self.mitm_proxy.get_ca_cert_path()
+            message = f"MITM代理已启动\n\n代理地址: https://127.0.0.1:{port}\n"
+            if self.auto_proxy.get():
+                message += f"\n代理配置: {'自动配置成功' if proxy_set else '自动配置失败，请手动设置'}\n"
+            message += f"\n证书安装: {'自动安装成功' if cert_installed else '自动安装失败，请手动安装'}\n"
+            message += f"\nCA证书路径: {ca_cert_path}\n"
+            message += "\n使用说明:\n1. 打开浏览器访问网站\n2. 开始抓包即可看到解密后的HTTPS内容"
+            messagebox.showinfo("MITM代理", message)
+            
             # 更新UI
             self.start_mitm_btn.config(state=tk.DISABLED)
             self.stop_mitm_btn.config(state=tk.NORMAL)
-            self.status_var.set(f"MITM代理已启动: https://127.0.0.1:{port}")
-            
-            # 显示证书安装提示
-            ca_cert_path = self.mitm_proxy.get_ca_cert_path()
-            messagebox.showinfo("MITM代理", f"MITM代理已启动\n\n代理地址: https://127.0.0.1:{port}\n\n请在浏览器中安装CA证书以解密HTTPS流量:\n{ca_cert_path}")
             
         except Exception as e:
             messagebox.showerror("错误", f"启动MITM代理失败: {str(e)}")
@@ -953,6 +975,10 @@ headers = {
         """停止MITM代理"""
         try:
             if self.mitm_proxy:
+                # 自动关闭系统代理
+                if self.auto_proxy.get():
+                    self.mitm_proxy.set_system_proxy(enable=False)
+                
                 self.mitm_proxy.stop()
                 self.mitm_proxy = None
                 
@@ -960,6 +986,9 @@ headers = {
                 self.start_mitm_btn.config(state=tk.NORMAL)
                 self.stop_mitm_btn.config(state=tk.DISABLED)
                 self.status_var.set("就绪")
+                
+                # 显示提示
+                messagebox.showinfo("MITM代理", "MITM代理已停止\n\n系统代理已自动关闭，您可以正常访问互联网了。")
                 
         except Exception as e:
             messagebox.showerror("错误", f"停止MITM代理失败: {str(e)}")
@@ -984,6 +1013,30 @@ headers = {
             # 准备数据
             data = []
             for packet in self.captured_packets:
+                # 提取内容解析信息
+                content_info = ''
+                if 'content' in packet:
+                    content = packet['content']
+                    if isinstance(content, dict):
+                        # 构建内容解析字符串
+                        content_parts = []
+                        if 'type' in content:
+                            content_parts.append(f"类型: {content['type']}")
+                        if 'payload' in content:
+                            payload = content['payload']
+                            if isinstance(payload, str) and len(payload) > 100:
+                                payload = payload[:100] + '...'
+                            content_parts.append(f"内容: {payload}")
+                        if 'method' in content:
+                            content_parts.append(f"方法: {content['method']}")
+                        if 'host' in content:
+                            content_parts.append(f"主机: {content['host']}")
+                        if 'path' in content:
+                            content_parts.append(f"路径: {content['path']}")
+                        if 'status_code' in content:
+                            content_parts.append(f"状态码: {content['status_code']}")
+                        content_info = ' | '.join(content_parts)
+                
                 data.append({
                     '序号': packet['no'],
                     '时间': packet['time'],
@@ -993,7 +1046,8 @@ headers = {
                     '源端口': packet['src_port'],
                     '目标端口': packet['dst_port'],
                     '长度': packet['length'],
-                    '信息': packet['info']
+                    '信息': packet['info'],
+                    '内容解析': content_info
                 })
             
             # 创建DataFrame并保存

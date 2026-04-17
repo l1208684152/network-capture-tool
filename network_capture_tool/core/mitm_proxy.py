@@ -237,3 +237,186 @@ class MITMProxy:
     def get_ca_cert_path(self):
         """获取CA证书路径"""
         return self.ca_cert
+    
+    def set_system_proxy(self, enable=True):
+        """设置系统代理"""
+        import platform
+        system = platform.system()
+        
+        if system == 'Windows':
+            return self._set_windows_proxy(enable)
+        elif system == 'Darwin':
+            return self._set_mac_proxy(enable)
+        elif system == 'Linux':
+            return self._set_linux_proxy(enable)
+        return False
+    
+    def _set_windows_proxy(self, enable):
+        """设置Windows系统代理"""
+        try:
+            import winreg
+            
+            # 打开注册表
+            reg_path = r'SOFTWARE\Microsoft\Windows\CurrentVersion\Internet Settings'
+            reg_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, reg_path, 0, winreg.KEY_SET_VALUE)
+            
+            if enable:
+                # 启用代理
+                winreg.SetValueEx(reg_key, 'ProxyEnable', 0, winreg.REG_DWORD, 1)
+                winreg.SetValueEx(reg_key, 'ProxyServer', 0, winreg.REG_SZ, f'127.0.0.1:{self.port}')
+                winreg.SetValueEx(reg_key, 'ProxyOverride', 0, winreg.REG_SZ, '<local>')
+            else:
+                # 禁用代理
+                winreg.SetValueEx(reg_key, 'ProxyEnable', 0, winreg.REG_DWORD, 0)
+            
+            winreg.CloseKey(reg_key)
+            return True
+        except Exception as e:
+            logging.error(f"设置Windows代理失败: {str(e)}")
+            return False
+    
+    def _set_mac_proxy(self, enable):
+        """设置macOS系统代理"""
+        try:
+            import subprocess
+            
+            if enable:
+                # 启用代理
+                subprocess.run(['networksetup', '-setwebproxy', 'Wi-Fi', '127.0.0.1', str(self.port)], check=True)
+                subprocess.run(['networksetup', '-setsecurewebproxy', 'Wi-Fi', '127.0.0.1', str(self.port)], check=True)
+            else:
+                # 禁用代理
+                subprocess.run(['networksetup', '-setwebproxystate', 'Wi-Fi', 'off'], check=True)
+                subprocess.run(['networksetup', '-setsecurewebproxystate', 'Wi-Fi', 'off'], check=True)
+            
+            return True
+        except Exception as e:
+            logging.error(f"设置macOS代理失败: {str(e)}")
+            return False
+    
+    def _set_linux_proxy(self, enable):
+        """设置Linux系统代理"""
+        try:
+            # 这里可以根据不同的Linux桌面环境实现
+            # 暂时返回False，需要用户手动设置
+            return False
+        except Exception as e:
+            logging.error(f"设置Linux代理失败: {str(e)}")
+            return False
+    
+    def install_certificate(self):
+        """自动安装CA证书"""
+        import platform
+        system = platform.system()
+        
+        if system == 'Windows':
+            return self._install_windows_certificate()
+        elif system == 'Darwin':
+            return self._install_mac_certificate()
+        elif system == 'Linux':
+            return self._install_linux_certificate()
+        return False
+    
+    def _install_windows_certificate(self):
+        """在Windows上安装CA证书"""
+        try:
+            import subprocess
+            # 使用certutil命令安装证书
+            result = subprocess.run(
+                ['certutil', '-addstore', '-f', 'Root', self.ca_cert],
+                capture_output=True,
+                text=True
+            )
+            return result.returncode == 0
+        except Exception as e:
+            logging.error(f"安装Windows证书失败: {str(e)}")
+            return False
+    
+    def _install_mac_certificate(self):
+        """在macOS上安装CA证书"""
+        try:
+            import subprocess
+            # 使用security命令安装证书
+            result = subprocess.run(
+                ['security', 'add-trusted-cert', '-d', '-r', 'trustRoot', '-k', '/Library/Keychains/System.keychain', self.ca_cert],
+                capture_output=True,
+                text=True
+            )
+            return result.returncode == 0
+        except Exception as e:
+            logging.error(f"安装macOS证书失败: {str(e)}")
+            return False
+    
+    def _install_linux_certificate(self):
+        """在Linux上安装CA证书"""
+        try:
+            # 这里可以根据不同的Linux发行版实现
+            # 暂时返回False，需要用户手动安装
+            return False
+        except Exception as e:
+            logging.error(f"安装Linux证书失败: {str(e)}")
+            return False
+    
+    def check_proxy_status(self):
+        """检查代理状态"""
+        import platform
+        system = platform.system()
+        
+        if system == 'Windows':
+            return self._check_windows_proxy()
+        elif system == 'Darwin':
+            return self._check_mac_proxy()
+        elif system == 'Linux':
+            return self._check_linux_proxy()
+        return False
+    
+    def _check_windows_proxy(self):
+        """检查Windows代理状态"""
+        try:
+            import winreg
+            
+            # 打开注册表
+            reg_path = r'SOFTWARE\Microsoft\Windows\CurrentVersion\Internet Settings'
+            reg_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, reg_path, 0, winreg.KEY_READ)
+            
+            # 读取代理设置
+            proxy_enable, _ = winreg.QueryValueEx(reg_key, 'ProxyEnable')
+            proxy_server, _ = winreg.QueryValueEx(reg_key, 'ProxyServer')
+            
+            winreg.CloseKey(reg_key)
+            
+            return proxy_enable == 1 and f'127.0.0.1:{self.port}' in proxy_server
+        except Exception as e:
+            logging.error(f"检查Windows代理失败: {str(e)}")
+            return False
+    
+    def _check_mac_proxy(self):
+        """检查macOS代理状态"""
+        try:
+            import subprocess
+            
+            # 检查Web代理设置
+            result = subprocess.run(
+                ['networksetup', '-getwebproxy', 'Wi-Fi'],
+                capture_output=True,
+                text=True
+            )
+            
+            return f'Server: 127.0.0.1' in result.stdout and f'Port: {self.port}' in result.stdout
+        except Exception as e:
+            logging.error(f"检查macOS代理失败: {str(e)}")
+            return False
+    
+    def _check_linux_proxy(self):
+        """检查Linux代理状态"""
+        try:
+            # 检查环境变量
+            import os
+            http_proxy = os.environ.get('http_proxy') or os.environ.get('HTTP_PROXY')
+            https_proxy = os.environ.get('https_proxy') or os.environ.get('HTTPS_PROXY')
+            
+            expected_proxy = f'http://127.0.0.1:{self.port}'
+            return http_proxy == expected_proxy and https_proxy == expected_proxy
+        except Exception as e:
+            logging.error(f"检查Linux代理失败: {str(e)}")
+            return False
