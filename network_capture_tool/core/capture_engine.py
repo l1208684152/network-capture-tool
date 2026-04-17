@@ -3,6 +3,9 @@ import time
 import platform
 import logging
 import psutil
+import os
+import traceback
+import datetime
 
 # 导入Scapy及必要的层
 from scapy.all import sniff, conf, IP, TCP, UDP
@@ -65,8 +68,7 @@ class CaptureEngine:
         
         while self.running and retry_count < max_retries:
             try:
-                # 导入必要的模块
-                import os
+                # 模块已在文件开头导入
                 logger.info("导入必要模块成功")
                 
                 # 使用scapy进行抓包
@@ -241,7 +243,7 @@ class CaptureEngine:
                     )
                 except Exception as e:
                     logger.error(f"抓包循环中发生错误: {e}")
-                    import traceback
+
                     logger.debug(f"错误详情: {traceback.format_exc()}")
                     
                     # 非致命错误，尝试重试
@@ -269,7 +271,7 @@ class CaptureEngine:
                 return
             except Exception as e:
                 logger.error(f"抓包过程中发生错误：{type(e).__name__}: {str(e)}")
-                import traceback
+
                 logger.debug(f"错误详情: {traceback.format_exc()}")
                 
                 # 非致命错误，尝试重试
@@ -335,7 +337,6 @@ class CaptureEngine:
         """解析数据包信息"""
         try:
             # 基本信息
-            import datetime
             sniff_time = datetime.datetime.now()
             
             # 格式化时间戳
