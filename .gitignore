@@ -1,0 +1,36 @@
+# 忽略Python编译产物
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 忽略安装依赖
+venv/
+env/
+*.egg/
+*.egg-info/
+dist/
+build/
+
+# 忽略IDE相关文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 忽略操作系统文件
+.DS_Store
+Thumbs.db
+
+# 忽略日志文件
+*.log
+capture_tool.log
+
+# 忽略测试文件
+test_*.py
+simple_test.py
+comprehensive_test.py
+
+# 忽略其他临时文件
+*.tmp
+*.temp
