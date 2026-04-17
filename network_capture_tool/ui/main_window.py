@@ -235,7 +235,7 @@ class NetworkCaptureTool:
         
         # 数据包详情区域
         detail_frame = ttk.LabelFrame(result_frame, text="数据包详情", padding=(5, 5))
-        detail_frame.pack(fill=tk.X, pady=5, padx=5)
+        detail_frame.pack(fill=tk.BOTH, expand=True, pady=5, padx=5)
         
         # 详情标签页
         self.notebook = ttk.Notebook(detail_frame)
@@ -244,6 +244,10 @@ class NetworkCaptureTool:
         # 原始详情
         self.raw_detail_text = scrolledtext.ScrolledText(self.notebook, wrap=tk.WORD, height=5, font=('Consolas', 9))
         self.notebook.add(self.raw_detail_text, text="原始数据")
+        
+        # 内容解析
+        self.content_detail_text = scrolledtext.ScrolledText(self.notebook, wrap=tk.WORD, height=5, font=('Consolas', 9))
+        self.notebook.add(self.content_detail_text, text="内容解析")
         
         # 反爬虫分析
         self.anti_crawler_text = scrolledtext.ScrolledText(self.notebook, wrap=tk.WORD, height=5, font=('Consolas', 9))
@@ -737,7 +741,7 @@ headers = {
         
         logging.info(f"表格已按 {column} 排序")
     
-    def show_packet_detail(self, event):
+    def show_packet_detail(self, event=None):
         """显示数据包详情"""
         selected_items = self.result_tree.selection()
         if not selected_items:
@@ -751,6 +755,94 @@ headers = {
             # 显示原始数据
             self.raw_detail_text.delete(1.0, tk.END)
             self.raw_detail_text.insert(tk.END, packet['raw'])
+            
+            # 显示内容解析
+            content_detail = "=== 内容解析 ===\n"
+            try:
+                if 'content' in packet:
+                    content = packet['content']
+                    if content:
+                        content_type = content.get('type', 'Unknown')
+                        content_detail += f"类型: {content_type}\n\n"
+                        
+                        if content_type == 'HTTP Request':
+                            content_detail += "HTTP请求信息:\n"
+                            if 'method' in content:
+                                content_detail += f"方法: {content['method']}\n"
+                            if 'path' in content:
+                                content_detail += f"路径: {content['path']}\n"
+                            if 'version' in content:
+                                content_detail += f"版本: {content['version']}\n"
+                            if 'headers' in content:
+                                content_detail += "\n请求头:\n"
+                                for key, value in content['headers'].items():
+                                    content_detail += f"  {key}: {value}\n"
+                            if 'body' in content:
+                                content_detail += "\n请求体:\n"
+                                content_detail += content['body'][:1000] + ("..." if len(content['body']) > 1000 else "")
+                        
+                        elif content_type == 'HTTP Response':
+                            content_detail += "HTTP响应信息:\n"
+                            if 'version' in content:
+                                content_detail += f"版本: {content['version']}\n"
+                            if 'status' in content:
+                                content_detail += f"状态码: {content['status']}\n"
+                            if 'reason' in content:
+                                content_detail += f"原因: {content['reason']}\n"
+                            if 'headers' in content:
+                                content_detail += "\n响应头:\n"
+                                for key, value in content['headers'].items():
+                                    content_detail += f"  {key}: {value}\n"
+                            if 'body' in content:
+                                content_detail += "\n响应体:\n"
+                                content_detail += content['body'][:1000] + ("..." if len(content['body']) > 1000 else "")
+                        
+                        elif content_type == 'DNS Query':
+                            content_detail += "DNS查询信息:\n"
+                            if 'qname' in content:
+                                content_detail += f"查询域名: {content['qname']}\n"
+                            if 'qtype' in content:
+                                content_detail += f"查询类型: {content['qtype']}\n"
+                            if 'qclass' in content:
+                                content_detail += f"查询类: {content['qclass']}\n"
+                        
+                        elif content_type == 'DNS Response':
+                            content_detail += "DNS响应信息:\n"
+                            if 'qr' in content:
+                                content_detail += f"QR: {content['qr']}\n"
+                            if 'rcode' in content:
+                                content_detail += f"响应码: {content['rcode']}\n"
+                            if 'ancount' in content:
+                                content_detail += f"回答数: {content['ancount']}\n"
+                        
+                        elif content_type == 'Raw Data':
+                            content_detail += "原始数据:\n"
+                            if 'payload' in content:
+                                content_detail += content['payload'][:1000] + ("..." if len(content['payload']) > 1000 else "")
+                        
+                        elif content_type == 'Binary Data':
+                            content_detail += "二进制数据:\n"
+                            if 'length' in content:
+                                content_detail += f"长度: {content['length']} bytes\n"
+                                content_detail += "（二进制数据已省略）"
+                        
+                        elif content_type == 'Basic Packet':
+                            content_detail += "基本数据包信息:\n"
+                            if 'protocol' in content:
+                                content_detail += f"协议: {content['protocol']}\n"
+                            if 'src_port' in content:
+                                content_detail += f"源端口: {content['src_port']}\n"
+                            if 'dst_port' in content:
+                                content_detail += f"目标端口: {content['dst_port']}\n"
+                    else:
+                        content_detail += "Content为空字典\n"
+                else:
+                    content_detail += "无Content字段\n"
+            except Exception as e:
+                content_detail += f"显示内容解析失败: {str(e)}\n"
+            
+            self.content_detail_text.delete(1.0, tk.END)
+            self.content_detail_text.insert(tk.END, content_detail)
             
             # 显示反爬虫分析（基于原始数据）
             analysis = "=== 反爬虫分析 ===\n"

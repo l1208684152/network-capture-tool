@@ -75,9 +75,12 @@ class CaptureEngine:
                 # scapy已经在文件开头导入
                 
                 # 获取指定PID的进程
+                process = None
+                process_name = None
                 try:
                     process = psutil.Process(pid)
-                    logger.info(f"找到进程: {process.name()} (PID: {pid})")
+                    process_name = process.name()
+                    logger.info(f"找到进程: {process_name} (PID: {pid})")
                 except psutil.NoSuchProcess:
                     logger.error(f"未找到PID为 {pid} 的进程")
                     self.queue.put(("error", f"未找到PID为 {pid} 的进程"))
@@ -88,8 +91,8 @@ class CaptureEngine:
                     return
                 
                 # 获取可用网络接口
-                interfaces = conf.ifaces.values()
-                interface_names = [iface.name for iface in interfaces]
+                interfaces_list = list(conf.ifaces.values())
+                interface_names = [iface.name for iface in interfaces_list]
                 logger.info(f"可用网络接口: {interface_names}")
                 
                 # 选择网络接口
@@ -98,27 +101,46 @@ class CaptureEngine:
                     self.queue.put(("error", "没有可用的网络接口"))
                     return
                 
-                # 尝试找到合适的网络接口
+                # 尝试找到合适的网络接口（排除虚拟接口和Miniport）
                 selected_interface = None
-                for iface in interfaces:
+                for iface in interfaces_list:
+                    iface_name = iface.name.lower()
+                    iface_desc = iface.description.lower() if iface.description else ""
+                    
+                    # 跳过虚拟接口、Miniport、Loopback等
+                    if any(x in iface_name for x in ['miniport', 'loopback', 'virtual', 'adapter', '本地连接']):
+                        continue
+                    
                     # 同时匹配中英文关键词
-                    if ('wlan' in iface.name.lower() or 
-                        '无线' in iface.description.lower() or 
-                        'wifi' in iface.name.lower() or
-                        'wireless' in iface.description.lower()):
+                    if ('wlan' in iface_name or 
+                        'wifi' in iface_name or
+                        'wireless' in iface_desc or
+                        '无线' in iface_desc):
                         selected_interface = iface.name
-                        logger.info(f"选择WLAN接口: {selected_interface}")
+                        logger.info(f"选择WLAN接口: {selected_interface} (描述: {iface.description})")
                         break
-                    elif ('ethernet' in iface.name.lower() or 
-                          '以太网' in iface.description.lower() or
-                          'eth' in iface.name.lower()):
+                    elif ('ethernet' in iface_name or 
+                          '以太网' in iface_desc or
+                          'eth' in iface_name):
                         selected_interface = iface.name
-                        logger.info(f"选择以太网接口: {selected_interface}")
+                        logger.info(f"选择以太网接口: {selected_interface} (描述: {iface.description})")
                         break
                 
+                # 如果没有找到合适的接口，选择第一个物理接口
                 if not selected_interface:
+                    for iface in interfaces_list:
+                        iface_name = iface.name.lower()
+                        # 跳过虚拟接口和Loopback
+                        if any(x in iface_name for x in ['miniport', 'loopback', 'virtual', 'adapter', '本地连接']):
+                            continue
+                        selected_interface = iface.name
+                        logger.info(f"未找到WLAN或以太网接口，使用第一个物理接口: {selected_interface} (描述: {iface.description})")
+                        break
+                
+                # 如果仍然没有找到，使用第一个接口但给出警告
+                if not selected_interface and interface_names:
                     selected_interface = interface_names[0]
-                    logger.info(f"未找到WLAN或以太网接口，使用第一个接口: {selected_interface}")
+                    logger.warning(f"未找到合适的物理接口，使用第一个接口: {selected_interface}")
                 
                 # 记录进程的端口使用历史
                 process_ports = set()
@@ -136,12 +158,32 @@ class CaptureEngine:
                     if current_time - last_update_time >= update_interval:
                         last_update_time = current_time
                         try:
-                            connections = process.connections(kind='inet')
+                            # 使用psutil.net_connections()获取所有连接，然后过滤到目标进程
+                            all_connections = psutil.net_connections(kind='inet')
+                            
+                            # 过滤出属于目标进程的连接，以及具有相同名称的其他进程的连接
+                            # 这样可以捕获浏览器等多进程应用的所有连接
+                            connections = []
+                            for conn in all_connections:
+                                if conn.pid == pid:
+                                    connections.append(conn)
+                                else:
+                                    # 检查是否是具有相同名称的其他进程
+                                    try:
+                                        other_process = psutil.Process(conn.pid)
+                                        if other_process.name() == process_name:
+                                            connections.append(conn)
+                                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                        pass
+                            
                             # 更新端口历史
                             for conn in connections:
-                                process_ports.add(conn.laddr.port)
+                                if conn.laddr:
+                                    process_ports.add(conn.laddr.port)
                                 if conn.raddr:
                                     process_ports.add(conn.raddr.port)
+                            
+                            logger.debug(f"更新进程 {pid} 及其同名进程的连接: {len(connections)} 个连接, 端口: {process_ports}")
                             return connections
                         except Exception as e:
                             logger.error(f"获取进程连接失败: {e}")
@@ -195,8 +237,7 @@ class CaptureEngine:
                         iface=selected_interface,
                         filter="tcp or udp",
                         prn=packet_handler,
-                        store=False,
-                        timeout=60  # 添加超时，避免长时间阻塞
+                        store=False
                     )
                 except Exception as e:
                     logger.error(f"抓包循环中发生错误: {e}")
@@ -271,17 +312,18 @@ class CaptureEngine:
             # 检查是否与进程的网络连接匹配
             for conn in connections:
                 # 检查本地地址和端口
-                if (conn.laddr.ip == src_ip and conn.laddr.port == src_port) or \
+                if (conn.laddr and conn.laddr.ip == src_ip and conn.laddr.port == src_port) or \
                    (conn.raddr and conn.raddr.ip == src_ip and conn.raddr.port == src_port):
                     return True
                 # 检查远程地址和端口
-                if (conn.laddr.ip == dst_ip and conn.laddr.port == dst_port) or \
+                if (conn.laddr and conn.laddr.ip == dst_ip and conn.laddr.port == dst_port) or \
                    (conn.raddr and conn.raddr.ip == dst_ip and conn.raddr.port == dst_port):
                     return True
             
             # 检查是否与进程的端口使用历史匹配（减少漏包）
             if process_ports:
                 if src_port in process_ports or dst_port in process_ports:
+                    logger.debug(f"数据包端口匹配: {src_port} 或 {dst_port} 在进程端口集合中")
                     return True
             
             return False
@@ -349,20 +391,116 @@ class CaptureEngine:
             elif proto == 'UDP':
                 info = f"UDP "
             
-            # 应用层信息
+            # 应用层信息和内容
+            content = {}
             if packet.haslayer('HTTPRequest'):
                 http_layer = packet['HTTPRequest']
-                info += f"HTTP {http_layer.Method.decode('utf-8', errors='ignore')}"
+                method = http_layer.Method.decode('utf-8', errors='ignore')
+                path = http_layer.Path.decode('utf-8', errors='ignore')
+                version = http_layer.Http_Version.decode('utf-8', errors='ignore')
+                info += f"HTTP {method} {path}"
+                
+                # 提取HTTP请求内容
+                content['type'] = 'HTTP Request'
+                content['method'] = method
+                content['path'] = path
+                content['version'] = version
+                
+                # 提取HTTP头部
+                headers = {}
+                for key, value in http_layer.fields.items():
+                    if key not in ['Method', 'Path', 'Http_Version']:
+                        headers[key] = value.decode('utf-8', errors='ignore') if isinstance(value, bytes) else str(value)
+                content['headers'] = headers
+                
+                # 提取HTTP载荷
+                if packet.haslayer('Raw'):
+                    raw = packet['Raw'].load
+                    try:
+                        content['body'] = raw.decode('utf-8', errors='ignore')
+                    except:
+                        content['body'] = f"Binary data ({len(raw)} bytes)"
+            
             elif packet.haslayer('HTTPResponse'):
-                info += f"HTTP Response"
+                http_layer = packet['HTTPResponse']
+                version = http_layer.Http_Version.decode('utf-8', errors='ignore')
+                status = http_layer.Status_Code.decode('utf-8', errors='ignore')
+                reason = http_layer.Reason_Phrase.decode('utf-8', errors='ignore')
+                info += f"HTTP Response {status} {reason}"
+                
+                # 提取HTTP响应内容
+                content['type'] = 'HTTP Response'
+                content['version'] = version
+                content['status'] = status
+                content['reason'] = reason
+                
+                # 提取HTTP头部
+                headers = {}
+                for key, value in http_layer.fields.items():
+                    if key not in ['Http_Version', 'Status_Code', 'Reason_Phrase']:
+                        headers[key] = value.decode('utf-8', errors='ignore') if isinstance(value, bytes) else str(value)
+                content['headers'] = headers
+                
+                # 提取HTTP载荷
+                if packet.haslayer('Raw'):
+                    raw = packet['Raw'].load
+                    try:
+                        content['body'] = raw.decode('utf-8', errors='ignore')
+                    except:
+                        content['body'] = f"Binary data ({len(raw)} bytes)"
+            
             elif packet.haslayer('DNS'):
                 dns_layer = packet['DNS']
                 if dns_layer.qr == 0:  # 查询
                     if dns_layer.haslayer('DNSQR'):
                         qr = dns_layer['DNSQR']
-                        info += f"DNS {qr.qname.decode('utf-8', errors='ignore')}"
+                        qname = qr.qname.decode('utf-8', errors='ignore')
+                        qtype = qr.qtype
+                        qclass = qr.qclass
+                        info += f"DNS Query {qname}"
+                        
+                        # 提取DNS查询内容
+                        content['type'] = 'DNS Query'
+                        content['qname'] = qname
+                        content['qtype'] = qtype
+                        content['qclass'] = qclass
                 else:  # 响应
                     info += f"DNS Response"
+                    
+                    # 提取DNS响应内容
+                    content['type'] = 'DNS Response'
+                    content['qr'] = dns_layer.qr
+                    content['opcode'] = dns_layer.opcode
+                    content['aa'] = dns_layer.aa
+                    content['tc'] = dns_layer.tc
+                    content['rd'] = dns_layer.rd
+                    content['ra'] = dns_layer.ra
+                    content['z'] = dns_layer.z
+                    content['rcode'] = dns_layer.rcode
+                    content['qdcount'] = dns_layer.qdcount
+                    content['ancount'] = dns_layer.ancount
+                    content['nscount'] = dns_layer.nscount
+                    content['arcount'] = dns_layer.arcount
+            
+            # 提取TCP/UDP载荷（只有在没有应用层信息时）
+            elif packet.haslayer('Raw'):
+                raw = packet['Raw'].load
+                try:
+                    payload = raw.decode('utf-8', errors='ignore')
+                    info += f"Data: {payload[:50]}..."
+                    content['type'] = 'Raw Data'
+                    content['payload'] = payload
+                except:
+                    info += f"Binary data ({len(raw)} bytes)"
+                    content['type'] = 'Binary Data'
+                    content['length'] = len(raw)
+            
+            # 如果没有应用层信息，添加基本信息
+            if not content:
+                content['type'] = 'Basic Packet'
+                content['protocol'] = proto
+                content['src_port'] = src_port
+                content['dst_port'] = dst_port
             
             # 构建数据包信息
             packet_info = {
@@ -375,7 +513,8 @@ class CaptureEngine:
                 'dst_port': dst_port,
                 'length': length,
                 'info': info,
-                'raw': str(packet)
+                'raw': str(packet),
+                'content': content  # 新增：详细内容解析
             }
             
             # 将数据包添加到队列
