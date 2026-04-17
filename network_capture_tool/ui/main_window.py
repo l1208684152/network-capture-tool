@@ -563,6 +563,8 @@ headers = {
         self.process_menu = tk.Menu(self.root, tearoff=0)
         self.process_menu.add_command(label="刷新进程", command=self.load_processes)
         self.process_menu.add_command(label="开始抓包", command=self.start_capture)
+        self.process_menu.add_separator()
+        self.process_menu.add_command(label="查看进程详情", command=self.show_process_detail)
         
         # 结果列表右键菜单
         self.result_menu = tk.Menu(self.root, tearoff=0)
@@ -570,6 +572,9 @@ headers = {
         self.result_menu.add_command(label="保存结果", command=self.save_capture)
         self.result_menu.add_separator()
         self.result_menu.add_command(label="复制选中项", command=self.copy_selected_result)
+        self.result_menu.add_command(label="查看详细信息", command=self.show_packet_detail)
+        self.result_menu.add_separator()
+        self.result_menu.add_command(label="应用过滤", command=self.apply_filter)
     
     def show_process_context_menu(self, event):
         """显示进程列表右键菜单"""
@@ -607,6 +612,24 @@ headers = {
             result_text = '\t'.join(str(v) for v in values)
             self.root.clipboard_clear()
             self.root.clipboard_append(result_text)
+    
+    def show_process_detail(self):
+        """显示进程详情"""
+        selected_items = self.process_tree.selection()
+        if not selected_items:
+            return
+        
+        selected_item = selected_items[0]
+        values = self.process_tree.item(selected_item, 'values')
+        if values:
+            pid, name, cpu, memory, path, create_time = values
+            detail = f"进程ID: {pid}\n"
+            detail += f"进程名: {name}\n"
+            detail += f"CPU使用率: {cpu}\n"
+            detail += f"内存使用率: {memory}\n"
+            detail += f"进程路径: {path}\n"
+            detail += f"启动时间: {create_time}\n"
+            messagebox.showinfo("进程详情", detail)
     
     def apply_filter(self):
         """应用过滤条件"""
