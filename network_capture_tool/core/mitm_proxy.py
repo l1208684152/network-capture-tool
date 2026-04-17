@@ -30,8 +30,50 @@ class MITMProxy:
         if not os.path.exists(self.cert_dir):
             os.makedirs(self.cert_dir)
         
+        # 检测并处理预设的CA私钥
+        self._check_preset_ca_cert()
+        
         # 生成CA证书
         self._generate_ca_cert()
+    
+    def _check_preset_ca_cert(self):
+        """检测预设的CA私钥并提示用户"""
+        if os.path.exists(self.ca_key):
+            try:
+                # 读取私钥文件大小
+                key_size = os.path.getsize(self.ca_key)
+                # 检查私钥文件是否存在且大小合理
+                if key_size > 0:
+                    # 提示用户删除预设的CA私钥
+                    logging.warning("检测到预设的CA私钥文件，可能存在安全风险！")
+                    logging.warning("建议删除现有的CA私钥文件并重新生成，以确保安全性。")
+                    
+                    # 询问用户是否删除并重新生成
+                    import tkinter as tk
+                    from tkinter import messagebox
+                    
+                    # 创建一个临时的tk根窗口
+                    root = tk.Tk()
+                    root.withdraw()  # 隐藏窗口
+                    
+                    response = messagebox.askyesno(
+                        "安全警告",
+                        "检测到预设的CA私钥文件，可能存在安全风险！\n\n"+
+                        "为了确保安全性，建议删除现有的CA私钥并重新生成。\n\n"+
+                        "是否删除现有CA私钥并重新生成？"
+                    )
+                    
+                    root.destroy()
+                    
+                    if response:
+                        # 删除现有的CA证书和私钥
+                        if os.path.exists(self.ca_cert):
+                            os.remove(self.ca_cert)
+                        if os.path.exists(self.ca_key):
+                            os.remove(self.ca_key)
+                        logging.info("已删除预设的CA私钥文件，将重新生成")
+            except Exception as e:
+                logging.error(f"检测CA私钥时出错: {str(e)}")
     
     def _generate_ca_cert(self):
         """生成CA证书"""

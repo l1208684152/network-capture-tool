@@ -55,6 +55,20 @@ A computer-side network packet capture tool with anti-crawler features, allowing
 
 **Note**: The CA certificate is generated automatically and stored in the `network_capture_tool/core/certs/` directory.
 
+### Security Warning
+
+**IMPORTANT: CA Certificate Security**
+- The CA certificate is only intended for local packet capture testing
+- Do NOT install the CA certificate into your system or browser's trusted certificate store
+- After testing, please delete the generated CA certificate files
+- Using the CA certificate in a production environment or on public networks poses serious security risks
+- If you have previously installed the CA certificate, please remove it immediately
+
+**Security Risk**: If the CA private key is compromised, attackers can:
+1. Create fraudulent HTTPS certificates for any website
+2. Perform man-in-the-middle attacks to intercept encrypted traffic
+3. Steal sensitive information including passwords, payment details, and personal data
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
