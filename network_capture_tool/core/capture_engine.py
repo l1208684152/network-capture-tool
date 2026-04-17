@@ -493,10 +493,36 @@ class CaptureEngine:
                     info += f"Data: {payload[:50]}..."
                     content['type'] = 'Raw Data'
                     content['payload'] = payload
+                    
+                    # 尝试识别常见协议
+                    if 'GET ' in payload or 'POST ' in payload or 'PUT ' in payload or 'DELETE ' in payload:
+                        content['type'] = 'HTTP Request (Raw)'
+                    elif 'HTTP/1.1' in payload or 'HTTP/2' in payload or 'HTTP/3' in payload:
+                        content['type'] = 'HTTP Response (Raw)'
+                    elif 'SMTP' in payload or 'MAIL FROM' in payload:
+                        content['type'] = 'SMTP'
+                    elif 'POP3' in payload or 'USER ' in payload:
+                        content['type'] = 'POP3'
+                    elif 'IMAP' in payload or 'LOGIN ' in payload:
+                        content['type'] = 'IMAP'
+                    elif 'FTP' in payload or 'USER ' in payload:
+                        content['type'] = 'FTP'
                 except:
                     info += f"Binary data ({len(raw)} bytes)"
                     content['type'] = 'Binary Data'
                     content['length'] = len(raw)
+                    
+                    # 尝试根据端口识别协议
+                    if src_port == 443 or dst_port == 443:
+                        content['type'] = 'HTTPS (Encrypted)'
+                    elif src_port == 22 or dst_port == 22:
+                        content['type'] = 'SSH (Encrypted)'
+                    elif src_port == 5432 or dst_port == 5432:
+                        content['type'] = 'PostgreSQL (Encrypted)'
+                    elif src_port == 3306 or dst_port == 3306:
+                        content['type'] = 'MySQL (Encrypted)'
+                    elif src_port == 27017 or dst_port == 27017:
+                        content['type'] = 'MongoDB (Encrypted)'
             
             # 如果没有应用层信息，添加基本信息
             if not content:
