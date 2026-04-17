@@ -105,7 +105,7 @@ class DependencyManager:
         """安装所需依赖"""
         print("开始安装依赖...")
         logger.debug("开始安装依赖...")
-        required_packages = ['psutil', 'pandas', 'requests', 'scapy']
+        required_packages = ['psutil', 'pandas', 'requests', 'scapy', 'pyOpenSSL']
         missing_packages = []
         
         # 检查Python包

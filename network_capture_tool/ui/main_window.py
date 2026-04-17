@@ -58,6 +58,9 @@ class NetworkCaptureTool:
         self.capture_engine = CaptureEngine(self.queue)
         self.anti_crawler_tool = AntiCrawlerTool()
         
+        # 初始化MITM代理
+        self.mitm_proxy = None
+        
         # 设置UI
         self.setup_ui()
         # 加载进程列表
@@ -157,6 +160,28 @@ class NetworkCaptureTool:
         # 主题切换按钮
         self.theme_btn = ttk.Button(button_frame, text="切换主题", command=self.toggle_theme)
         self.theme_btn.pack(side=tk.LEFT, padx=5)
+        
+        # MITM代理配置
+        mitm_frame = ttk.LabelFrame(control_frame, text="HTTPS解密", padding=(5, 5))
+        mitm_frame.pack(fill=tk.X, pady=5, padx=10)
+        
+        mitm_container = ttk.Frame(mitm_frame)
+        mitm_container.pack(fill=tk.X, padx=5, pady=5)
+        
+        # 启用MITM代理
+        self.mitm_enabled = tk.BooleanVar(value=False)
+        ttk.Checkbutton(mitm_container, text="启用HTTPS解密", variable=self.mitm_enabled).pack(side=tk.LEFT, padx=10)
+        
+        # 代理端口
+        ttk.Label(mitm_container, text="代理端口：").pack(side=tk.LEFT, padx=10)
+        self.mitm_port = tk.StringVar(value="8888")
+        ttk.Entry(mitm_container, textvariable=self.mitm_port, width=8).pack(side=tk.LEFT, padx=5)
+        
+        # 启动/停止代理按钮
+        self.start_mitm_btn = ttk.Button(mitm_container, text="启动代理", command=self.start_mitm_proxy)
+        self.start_mitm_btn.pack(side=tk.RIGHT, padx=5)
+        self.stop_mitm_btn = ttk.Button(mitm_container, text="停止代理", command=self.stop_mitm_proxy, state=tk.DISABLED)
+        self.stop_mitm_btn.pack(side=tk.RIGHT, padx=5)
         
         # 反爬虫工具区域
         anti_crawler_frame = ttk.LabelFrame(main_frame, text="反爬虫工具", padding=(5, 5))
@@ -902,6 +927,42 @@ headers = {
         if packet:
             # 创建数据包详情弹窗
             PacketDetailWindow(self.root, packet)
+    
+    def start_mitm_proxy(self):
+        """启动MITM代理"""
+        try:
+            from core.mitm_proxy import MITMProxy
+            
+            port = int(self.mitm_port.get())
+            self.mitm_proxy = MITMProxy(port=port)
+            self.mitm_proxy.start()
+            
+            # 更新UI
+            self.start_mitm_btn.config(state=tk.DISABLED)
+            self.stop_mitm_btn.config(state=tk.NORMAL)
+            self.status_var.set(f"MITM代理已启动: https://127.0.0.1:{port}")
+            
+            # 显示证书安装提示
+            ca_cert_path = self.mitm_proxy.get_ca_cert_path()
+            messagebox.showinfo("MITM代理", f"MITM代理已启动\n\n代理地址: https://127.0.0.1:{port}\n\n请在浏览器中安装CA证书以解密HTTPS流量:\n{ca_cert_path}")
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"启动MITM代理失败: {str(e)}")
+    
+    def stop_mitm_proxy(self):
+        """停止MITM代理"""
+        try:
+            if self.mitm_proxy:
+                self.mitm_proxy.stop()
+                self.mitm_proxy = None
+                
+                # 更新UI
+                self.start_mitm_btn.config(state=tk.NORMAL)
+                self.stop_mitm_btn.config(state=tk.DISABLED)
+                self.status_var.set("就绪")
+                
+        except Exception as e:
+            messagebox.showerror("错误", f"停止MITM代理失败: {str(e)}")
     
     def save_capture(self):
         """保存抓包结果"""
