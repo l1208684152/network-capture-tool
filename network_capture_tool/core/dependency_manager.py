@@ -128,8 +128,9 @@ class DependencyManager:
             logger.info(f"正在安装缺失的依赖包: {', '.join(missing_packages)}")
             logger.debug(f"安装命令: {[sys.executable, '-m', 'pip', 'install', '-i', 'https://pypi.tuna.tsinghua.edu.cn/simple'] + missing_packages}")
             try:
+                # 使用--user选项避免权限问题
                 result = subprocess.check_output(
-                    [sys.executable, '-m', 'pip', 'install', '-i', 'https://pypi.tuna.tsinghua.edu.cn/simple'] + missing_packages,
+                    [sys.executable, '-m', 'pip', 'install', '--user', '-i', 'https://pypi.tuna.tsinghua.edu.cn/simple'] + missing_packages,
                     stderr=subprocess.STDOUT,
                     universal_newlines=True
                 )

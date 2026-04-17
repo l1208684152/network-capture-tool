@@ -319,6 +319,9 @@ class NetworkCaptureTool:
         # 主题设置
         self.theme = 'light'
         self.set_theme('light')
+        
+        # 绑定窗口关闭事件
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
     
     def load_processes(self):
         """加载所有运行中的进程"""
@@ -945,18 +948,18 @@ headers = {
             if self.auto_proxy.get():
                 proxy_set = self.mitm_proxy.set_system_proxy(enable=True)
                 if proxy_set:
-                    self.status_var.set(f"MITM代理已启动: https://127.0.0.1:{port} (自动配置代理成功)")
+                    self.status_var.set(f"MITM代理已启动: http://127.0.0.1:{port} (自动配置代理成功)")
                 else:
-                    self.status_var.set(f"MITM代理已启动: https://127.0.0.1:{port} (自动配置代理失败，请手动设置)")
+                    self.status_var.set(f"MITM代理已启动: http://127.0.0.1:{port} (自动配置代理失败，请手动设置)")
             else:
-                self.status_var.set(f"MITM代理已启动: https://127.0.0.1:{port}")
+                self.status_var.set(f"MITM代理已启动: http://127.0.0.1:{port}")
             
             # 自动安装证书
             cert_installed = self.mitm_proxy.install_certificate()
             
             # 显示提示
             ca_cert_path = self.mitm_proxy.get_ca_cert_path()
-            message = f"MITM代理已启动\n\n代理地址: https://127.0.0.1:{port}\n"
+            message = f"MITM代理已启动\n\n代理地址: http://127.0.0.1:{port}\n"
             if self.auto_proxy.get():
                 message += f"\n代理配置: {'自动配置成功' if proxy_set else '自动配置失败，请手动设置'}\n"
             message += f"\n证书安装: {'自动安装成功' if cert_installed else '自动安装失败，请手动安装'}\n"
@@ -970,6 +973,9 @@ headers = {
             
         except Exception as e:
             messagebox.showerror("错误", f"启动MITM代理失败: {str(e)}")
+            # 确保UI状态正确
+            self.start_mitm_btn.config(state=tk.NORMAL)
+            self.stop_mitm_btn.config(state=tk.DISABLED)
     
     def stop_mitm_proxy(self):
         """停止MITM代理"""
@@ -1059,6 +1065,31 @@ headers = {
         except Exception as e:
             messagebox.showerror("保存失败", f"保存抓包结果失败: {str(e)}")
             logging.error(f"保存抓包结果失败: {str(e)}")
+    
+    def on_close(self):
+        """处理窗口关闭事件"""
+        # 停止MITM代理（如果正在运行）
+        if self.mitm_proxy:
+            try:
+                # 自动关闭系统代理
+                if self.auto_proxy.get():
+                    self.mitm_proxy.set_system_proxy(enable=False)
+                
+                self.mitm_proxy.stop()
+                logging.info("MITM代理已自动停止")
+            except Exception as e:
+                logging.error(f"停止MITM代理失败: {str(e)}")
+        
+        # 停止抓包引擎
+        if self.running:
+            try:
+                self.capture_engine.stop_capture()
+                logging.info("抓包引擎已停止")
+            except Exception as e:
+                logging.error(f"停止抓包引擎失败: {str(e)}")
+        
+        # 关闭窗口
+        self.root.destroy()
 
 class PacketDetailWindow:
     """数据包详情弹窗类"""

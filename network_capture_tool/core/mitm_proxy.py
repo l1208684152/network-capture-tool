@@ -101,6 +101,17 @@ class MITMProxy:
             cert.gmtime_adj_notAfter(365 * 24 * 60 * 60)
             cert.set_issuer(ca_cert.get_subject())
             cert.set_pubkey(key)
+            
+            # 添加主题备用名称（SAN）
+            san = f"DNS:{hostname}"
+            cert.add_extensions([
+                OpenSSL.crypto.X509Extension(
+                    b"subjectAltName",
+                    False,
+                    san.encode('utf-8')
+                )
+            ])
+            
             cert.sign(ca_key, 'sha256')
             
             # 保存证书
@@ -119,12 +130,75 @@ class MITMProxy:
         
         logging.info(f"启动MITM代理服务器: {self.host}:{self.port}")
         
+        # 保存对MITMProxy实例的引用
+        proxy_instance = self
+        
         class ProxyHandler(BaseHTTPRequestHandler):
             def do_GET(self):
                 self._handle_request()
             
             def do_POST(self):
                 self._handle_request()
+            
+            def do_CONNECT(self):
+                """处理HTTPS CONNECT请求"""
+                try:
+                    # 获取目标主机和端口
+                    host, port = self.path.split(':')
+                    port = int(port)
+                    
+                    # 发送200 OK响应
+                    self.send_response(200, 'Connection Established')
+                    self.end_headers()
+                    
+                    # 为目标主机生成证书
+                    cert_file, key_file = proxy_instance._generate_cert(host)
+                    
+                    # 使用生成的证书包装连接
+                    context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+                    context.load_cert_chain(cert_file, key_file)
+                    secure_socket = context.wrap_socket(self.connection, server_side=True)
+                    
+                    # 连接目标服务器
+                    target_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    target_socket.settimeout(10)
+                    target_socket.connect((host, port))
+                    
+                    # 开始双向数据传输
+                    def forward_data(source, destination):
+                        """从源读取数据并发送到目标"""
+                        try:
+                            while True:
+                                data = source.recv(4096)
+                                if not data:
+                                    break
+                                destination.sendall(data)
+                        except Exception as e:
+                            pass
+                    
+                    # 启动两个线程进行双向数据传输
+                    client_to_server = threading.Thread(target=forward_data, args=(secure_socket, target_socket))
+                    server_to_client = threading.Thread(target=forward_data, args=(target_socket, secure_socket))
+                    
+                    client_to_server.daemon = True
+                    server_to_client.daemon = True
+                    
+                    client_to_server.start()
+                    server_to_client.start()
+                    
+                    # 等待线程完成
+                    client_to_server.join()
+                    server_to_client.join()
+                    
+                    secure_socket.close()
+                    target_socket.close()
+                    
+                except Exception as e:
+                    logging.error(f"CONNECT请求失败: {str(e)}")
+                    try:
+                        self.send_error(500, f"Proxy Error: {str(e)}")
+                    except:
+                        pass
             
             def _handle_request(self):
                 try:
@@ -135,7 +209,7 @@ class MITMProxy:
                         url = urlparse(f'http://{self.headers["Host"]}{self.path}')
                     
                     hostname = url.netloc.split(':')[0]
-                    port = url.port or (443 if url.scheme == 'https' else 80)
+                    port = url.port or 80
                     
                     # 读取请求数据
                     content_length = int(self.headers.get('Content-Length', 0))
@@ -155,14 +229,6 @@ class MITMProxy:
                     # 连接目标服务器
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     sock.settimeout(10)
-                    
-                    if url.scheme == 'https':
-                        # HTTPS连接
-                        context = ssl.create_default_context()
-                        context.check_hostname = False
-                        context.verify_mode = ssl.CERT_NONE
-                        sock = context.wrap_socket(sock, server_hostname=hostname)
-                    
                     sock.connect((hostname, port))
                     sock.sendall(request_data)
                     
@@ -200,16 +266,13 @@ class MITMProxy:
                     
                 except Exception as e:
                     logging.error(f"代理请求失败: {str(e)}")
-                    self.send_error(500, f"Proxy Error: {str(e)}")
+                    try:
+                        self.send_error(500, f"Proxy Error: {str(e)}")
+                    except:
+                        pass
         
         # 创建HTTP服务器
         self.server = HTTPServer((self.host, self.port), ProxyHandler)
-        
-        # 包装为HTTPS服务器
-        cert_file, key_file = self._generate_cert(self.host)
-        context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-        context.load_cert_chain(cert_file, key_file)
-        self.server.socket = context.wrap_socket(self.server.socket, server_side=True)
         
         # 启动服务器线程
         self.is_running = True
@@ -217,7 +280,7 @@ class MITMProxy:
         self.server_thread.daemon = True
         self.server_thread.start()
         
-        logging.info(f"MITM代理服务器已启动: https://{self.host}:{self.port}")
+        logging.info(f"MITM代理服务器已启动: http://{self.host}:{self.port}")
     
     def stop(self):
         """停止代理服务器"""
@@ -232,7 +295,7 @@ class MITMProxy:
     
     def get_proxy_url(self):
         """获取代理URL"""
-        return f"https://{self.host}:{self.port}"
+        return f"http://{self.host}:{self.port}"
     
     def get_ca_cert_path(self):
         """获取CA证书路径"""
@@ -263,7 +326,7 @@ class MITMProxy:
             if enable:
                 # 启用代理
                 winreg.SetValueEx(reg_key, 'ProxyEnable', 0, winreg.REG_DWORD, 1)
-                winreg.SetValueEx(reg_key, 'ProxyServer', 0, winreg.REG_SZ, f'127.0.0.1:{self.port}')
+                winreg.SetValueEx(reg_key, 'ProxyServer', 0, winreg.REG_SZ, f'http=127.0.0.1:{self.port};https=127.0.0.1:{self.port}')
                 winreg.SetValueEx(reg_key, 'ProxyOverride', 0, winreg.REG_SZ, '<local>')
             else:
                 # 禁用代理
