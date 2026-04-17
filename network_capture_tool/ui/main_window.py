@@ -268,6 +268,8 @@ class NetworkCaptureTool:
         ttk.Button(filter_frame, text="应用过滤", command=self.apply_filter).pack(side=tk.RIGHT, padx=5)
         
         self.result_tree.bind('<<TreeviewSelect>>', self.show_packet_detail)
+        # 添加双击事件处理
+        self.result_tree.bind('<Double-1>', self.on_packet_double_click)
         
         # 状态栏
         self.status_bar = ttk.Label(self.root, text="就绪 - 等待用户操作", relief=tk.SUNKEN, anchor=tk.W)
@@ -872,6 +874,23 @@ headers = {
             self.stats_text.delete(1.0, tk.END)
             self.stats_text.insert(tk.END, stats)
     
+    def on_packet_double_click(self, event):
+        """处理数据包双击事件"""
+        # 获取双击的项目
+        item = self.result_tree.identify_row(event.y)
+        if not item:
+            return
+        
+        # 选中该项目
+        self.result_tree.selection_set(item)
+        
+        # 获取数据包信息
+        tags = self.result_tree.item(item, 'tags')
+        if tags and len(tags) > 0:
+            packet = tags[0]
+            # 创建数据包详情弹窗
+            PacketDetailWindow(self.root, packet)
+    
     def save_capture(self):
         """保存抓包结果"""
         if not self.captured_packets:
@@ -913,3 +932,179 @@ headers = {
         except Exception as e:
             messagebox.showerror("保存失败", f"保存抓包结果失败: {str(e)}")
             logging.error(f"保存抓包结果失败: {str(e)}")
+
+class PacketDetailWindow:
+    """数据包详情弹窗类"""
+    
+    def __init__(self, parent, packet):
+        self.parent = parent
+        self.packet = packet
+        
+        # 创建弹窗
+        self.window = tk.Toplevel(parent)
+        self.window.title(f"数据包详情 - 序号: {packet['no']}")
+        self.window.geometry("900x700")
+        self.window.transient(parent)  # 设置为父窗口的临时窗口
+        self.window.grab_set()  # 模态窗口，禁止操作父窗口
+        
+        # 设置布局
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """设置弹窗界面"""
+        # 主框架
+        main_frame = ttk.Frame(self.window)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # 标签页
+        notebook = ttk.Notebook(main_frame)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # 基本信息标签页
+        basic_frame = ttk.Frame(notebook)
+        notebook.add(basic_frame, text="基本信息")
+        
+        # 基本信息内容
+        basic_text = scrolledtext.ScrolledText(basic_frame, wrap=tk.WORD, font=('Consolas', 9))
+        basic_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        basic_info = f"=== 基本信息 ===\n"
+        basic_info += f"序号: {self.packet['no']}\n"
+        basic_info += f"时间: {self.packet['time']}\n"
+        basic_info += f"源IP: {self.packet['src']}\n"
+        basic_info += f"目标IP: {self.packet['dst']}\n"
+        basic_info += f"协议: {self.packet['proto']}\n"
+        basic_info += f"源端口: {self.packet['src_port']}\n"
+        basic_info += f"目标端口: {self.packet['dst_port']}\n"
+        basic_info += f"长度: {self.packet['length']}\n"
+        basic_info += f"信息: {self.packet['info']}\n"
+        
+        basic_text.insert(tk.END, basic_info)
+        
+        # 原始数据标签页
+        raw_frame = ttk.Frame(notebook)
+        notebook.add(raw_frame, text="原始数据")
+        
+        raw_text = scrolledtext.ScrolledText(raw_frame, wrap=tk.WORD, font=('Consolas', 9))
+        raw_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        raw_text.insert(tk.END, self.packet['raw'])
+        
+        # 内容解析标签页
+        content_frame = ttk.Frame(notebook)
+        notebook.add(content_frame, text="内容解析")
+        
+        content_text = scrolledtext.ScrolledText(content_frame, wrap=tk.WORD, font=('Consolas', 9))
+        content_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        content_detail = "=== 内容解析 ===\n"
+        try:
+            if 'content' in self.packet:
+                content = self.packet['content']
+                if content:
+                    content_type = content.get('type', 'Unknown')
+                    content_detail += f"类型: {content_type}\n\n"
+                    
+                    if content_type == 'HTTP Request':
+                        content_detail += "HTTP请求信息:\n"
+                        if 'method' in content:
+                            content_detail += f"方法: {content['method']}\n"
+                        if 'path' in content:
+                            content_detail += f"路径: {content['path']}\n"
+                        if 'version' in content:
+                            content_detail += f"版本: {content['version']}\n"
+                        if 'headers' in content:
+                            content_detail += "\n请求头:\n"
+                            for key, value in content['headers'].items():
+                                content_detail += f"  {key}: {value}\n"
+                        if 'body' in content:
+                            content_detail += "\n请求体:\n"
+                            content_detail += content['body'] + ("..." if len(content['body']) > 5000 else "")
+                    
+                    elif content_type == 'HTTP Response':
+                        content_detail += "HTTP响应信息:\n"
+                        if 'version' in content:
+                            content_detail += f"版本: {content['version']}\n"
+                        if 'status' in content:
+                            content_detail += f"状态码: {content['status']}\n"
+                        if 'reason' in content:
+                            content_detail += f"原因: {content['reason']}\n"
+                        if 'headers' in content:
+                            content_detail += "\n响应头:\n"
+                            for key, value in content['headers'].items():
+                                content_detail += f"  {key}: {value}\n"
+                        if 'body' in content:
+                            content_detail += "\n响应体:\n"
+                            content_detail += content['body'] + ("..." if len(content['body']) > 5000 else "")
+                    
+                    elif content_type == 'DNS Query':
+                        content_detail += "DNS查询信息:\n"
+                        if 'qname' in content:
+                            content_detail += f"查询域名: {content['qname']}\n"
+                        if 'qtype' in content:
+                            content_detail += f"查询类型: {content['qtype']}\n"
+                        if 'qclass' in content:
+                            content_detail += f"查询类: {content['qclass']}\n"
+                    
+                    elif content_type == 'DNS Response':
+                        content_detail += "DNS响应信息:\n"
+                        if 'qr' in content:
+                            content_detail += f"QR: {content['qr']}\n"
+                        if 'rcode' in content:
+                            content_detail += f"响应码: {content['rcode']}\n"
+                        if 'ancount' in content:
+                            content_detail += f"回答数: {content['ancount']}\n"
+                    
+                    elif content_type == 'Raw Data':
+                        content_detail += "原始数据:\n"
+                        if 'payload' in content:
+                            content_detail += content['payload'] + ("..." if len(content['payload']) > 5000 else "")
+                    
+                    elif content_type == 'Binary Data':
+                        content_detail += "二进制数据:\n"
+                        if 'length' in content:
+                            content_detail += f"长度: {content['length']} bytes\n"
+                            content_detail += "（二进制数据已省略）"
+                    
+                    elif content_type == 'Basic Packet':
+                        content_detail += "基本数据包信息:\n"
+                        if 'protocol' in content:
+                            content_detail += f"协议: {content['protocol']}\n"
+                        if 'src_port' in content:
+                            content_detail += f"源端口: {content['src_port']}\n"
+                        if 'dst_port' in content:
+                            content_detail += f"目标端口: {content['dst_port']}\n"
+                else:
+                    content_detail += "Content为空字典\n"
+            else:
+                content_detail += "无Content字段\n"
+        except Exception as e:
+            content_detail += f"显示内容解析失败: {str(e)}\n"
+        
+        content_text.insert(tk.END, content_detail)
+        
+        # 按钮区域
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        ttk.Button(button_frame, text="复制内容", command=self.copy_content).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="关闭", command=self.window.destroy).pack(side=tk.RIGHT, padx=5)
+    
+    def copy_content(self):
+        """复制内容到剪贴板"""
+        # 复制基本信息
+        basic_info = f"序号: {self.packet['no']}\n"
+        basic_info += f"时间: {self.packet['time']}\n"
+        basic_info += f"源IP: {self.packet['src']}\n"
+        basic_info += f"目标IP: {self.packet['dst']}\n"
+        basic_info += f"协议: {self.packet['proto']}\n"
+        basic_info += f"源端口: {self.packet['src_port']}\n"
+        basic_info += f"目标端口: {self.packet['dst_port']}\n"
+        basic_info += f"长度: {self.packet['length']}\n"
+        basic_info += f"信息: {self.packet['info']}\n"
+        
+        # 复制到剪贴板
+        self.window.clipboard_clear()
+        self.window.clipboard_append(basic_info)
+        
+        # 显示提示
+        messagebox.showinfo("成功", "内容已复制到剪贴板！")
