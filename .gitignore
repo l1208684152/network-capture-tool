@@ -1,5 +1,6 @@
 # 忽略证书目录
 certs/
+network_capture_tool/core/certs/
 
 # 忽略Python缓存文件
 __pycache__/
