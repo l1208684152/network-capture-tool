@@ -1,5 +1,17 @@
 # Network Capture Tool
 
+## ⚠️ 安全警告 ⚠️
+
+**重要安全提示：本工具仅用于本地测试，禁止在生产环境或公网使用！**
+
+- **CA证书风险**：生成的CA证书仅用于本地抓包测试，**禁止安装到系统或浏览器的信任证书存储**
+- **私钥安全**：CA私钥已加密存储，但仍应注意保护
+- **敏感数据**：抓包可能会捕获到密码、token等敏感信息，请谨慎使用
+- **使用后清理**：使用完成后请确保停止代理并清理生成的证书文件
+- **法律合规**：请确保在合法范围内使用本工具，遵守相关法律法规
+
+---
+
 A computer-side network packet capture tool with anti-crawler features, allowing users to capture packets for specific processes with a user-friendly interface.
 
 ## Features
@@ -72,6 +84,65 @@ A computer-side network packet capture tool with anti-crawler features, allowing
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 安全使用指南
+
+### 如何安全生成/删除CA证书
+
+**生成CA证书**：
+1. 启动工具，点击"启动代理"按钮
+2. 工具会自动生成加密存储的CA证书和私钥
+3. 不要将生成的CA证书安装到系统或浏览器的信任区
+
+**删除CA证书**：
+1. 点击"停止代理"按钮，工具会自动清理所有证书文件
+2. 如果需要手动清理，请删除 `network_capture_tool/core/certs/` 目录下的所有文件
+3. 从浏览器或系统中移除已安装的CA证书（如果有）
+
+### 如何限制抓包范围
+
+**只抓特定进程**：
+1. 在"进程选择"下拉菜单中选择目标进程
+2. 点击"开始抓包"按钮，只抓取该进程的网络流量
+
+**只抓特定接口**：
+1. 在"接口选择"下拉菜单中选择目标网络接口
+2. 建议选择本地回环接口（127.0.0.1）以减少捕获的流量
+
+**只抓特定协议**：
+1. 在"协议过滤"选项中选择目标协议（HTTP/HTTPS）
+2. 这样可以只捕获感兴趣的协议流量
+
+### 安全最佳实践
+
+1. **最小权限**：仅使用必要的权限运行工具
+2. **敏感数据**：避免在公共场所使用本工具，防止敏感信息泄露
+3. **定期更新**：定期更新依赖库，确保使用安全版本
+4. **网络隔离**：在测试环境中使用，避免在生产网络中使用
+5. **日志管理**：定期清理抓包日志，避免敏感信息长期存储
+
+## 依赖与安全
+
+### 依赖库
+
+- **pyOpenSSL**: 用于生成和管理证书
+- **cryptography**: 用于加密存储CA私钥
+- **scapy**: 用于网络数据包捕获和分析
+- **psutil**: 用于进程管理
+- **tkinter**: 用于GUI界面
+
+### 安全版本建议
+
+- pyOpenSSL >= 23.2.0
+- cryptography >= 41.0.0
+- scapy >= 2.5.0
+- psutil >= 5.9.0
+
+### 漏洞扫描
+
+建议定期使用以下工具扫描依赖漏洞：
+- `pip audit`
+- `safety check`
 
 ## License
 

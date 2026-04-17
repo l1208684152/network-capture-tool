@@ -940,7 +940,17 @@ headers = {
         try:
             from core.mitm_proxy import MITMProxy
             
-            port = int(self.mitm_port.get())
+            # 获取并校验端口
+            port_str = self.mitm_port.get()
+            try:
+                port = int(port_str)
+                if port < 1024 or port > 65535:
+                    messagebox.showerror("错误", "端口必须在1024-65535之间")
+                    return
+            except ValueError:
+                messagebox.showerror("错误", "端口必须是整数")
+                return
+            
             self.mitm_proxy = MITMProxy(port=port)
             self.mitm_proxy.start()
             
@@ -954,17 +964,21 @@ headers = {
             else:
                 self.status_var.set(f"MITM代理已启动: http://127.0.0.1:{port}")
             
-            # 自动安装证书
-            cert_installed = self.mitm_proxy.install_certificate()
-            
-            # 显示提示
+            # 显示提示（移除自动安装证书，改为手动安装指引）
             ca_cert_path = self.mitm_proxy.get_ca_cert_path()
             message = f"MITM代理已启动\n\n代理地址: http://127.0.0.1:{port}\n"
             if self.auto_proxy.get():
                 message += f"\n代理配置: {'自动配置成功' if proxy_set else '自动配置失败，请手动设置'}\n"
-            message += f"\n证书安装: {'自动安装成功' if cert_installed else '自动安装失败，请手动安装'}\n"
             message += f"\nCA证书路径: {ca_cert_path}\n"
-            message += "\n使用说明:\n1. 打开浏览器访问网站\n2. 开始抓包即可看到解密后的HTTPS内容"
+            message += "\n安全警告:\n1. CA证书仅用于本地测试，禁止安装到系统信任区\n"
+            message += "2. 安装CA证书到系统信任区会带来严重安全风险\n"
+            message += "3. 使用完成后请及时删除生成的证书文件\n"
+            message += "\n手动安装指引（仅用于测试）:\n"
+            message += "1. 找到CA证书文件: " + ca_cert_path + "\n"
+            message += "2. 手动导入到浏览器或系统（不推荐）\n"
+            message += "3. 配置浏览器使用代理: http://127.0.0.1:" + str(port) + "\n"
+            message += "4. 开始抓包即可看到解密后的HTTPS内容\n"
+            message += "\n使用完成后:\n1. 点击'停止代理'按钮\n2. 从浏览器/系统中移除CA证书\n3. 删除生成的证书文件"
             messagebox.showinfo("MITM代理", message)
             
             # 更新UI

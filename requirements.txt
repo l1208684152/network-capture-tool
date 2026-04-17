@@ -1,0 +1,18 @@
+# Network Capture Tool 依赖包
+# 锁定安全版本，定期更新并扫描漏洞
+
+# 核心依赖
+psutil>=5.9.0
+pandas>=1.5.0
+requests>=2.31.0
+scapy>=2.5.0
+pyOpenSSL>=23.2.0
+cryptography>=41.0.0
+
+# 可选依赖
+# 用于Windows系统权限管理
+pywin32>=306
+
+# 开发依赖
+# 用于漏洞扫描
+safety>=2.3.1
